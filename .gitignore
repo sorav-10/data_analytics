@@ -1,0 +1,21 @@
+# Environment variables
+.env
+
+# Python virtual environment
+.venv/
+
+# Python caches
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+.ipynb_checkpoints/
+
+# Exclude pipeline script
+clean_data.py
+
+# Temporary Git configuration override
+.gitconfig
+
+
