@@ -1,0 +1,4 @@
+{
+    "duckdb.defaultDatabase": "pg",
+    "duckdb.databases": []
+}

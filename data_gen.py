@@ -9,7 +9,7 @@ from sqlalchemy import create_engine, text
 from dotenv import load_dotenv
 
 # Load database configuration from .env file
-load_dotenv()
+load_dotenv(override=True)
 
 DB_USER = os.getenv("DB_USER", "postgres")
 DB_PASS = os.getenv("DB_PASS")
@@ -21,7 +21,14 @@ if not DB_PASS:
     raise ValueError("Database password (DB_PASS) must be configured in the .env file")
 
 # CREATE DATABASE IF NOT EXISTS
-base_engine = create_engine(f"postgresql://{DB_USER}:{DB_PASS}@{DB_HOST}:{DB_PORT}/postgres")
+if "/" in DB_HOST or DB_HOST.startswith("."):
+    db_url_base = f"postgresql://{DB_USER}:{DB_PASS}@/postgres?host={DB_HOST}&port={DB_PORT}"
+    db_url_target = f"postgresql://{DB_USER}:{DB_PASS}@/{DB_NAME}?host={DB_HOST}&port={DB_PORT}"
+else:
+    db_url_base = f"postgresql://{DB_USER}:{DB_PASS}@{DB_HOST}:{DB_PORT}/postgres"
+    db_url_target = f"postgresql://{DB_USER}:{DB_PASS}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
+
+base_engine = create_engine(db_url_base)
 with base_engine.connect() as conn:
     conn.execute(text("END"))
     
@@ -39,26 +46,20 @@ with base_engine.connect() as conn:
 base_engine.dispose()
 
 # TARGET DATABASE ENGINE
-engine = create_engine(f"postgresql://{DB_USER}:{DB_PASS}@{DB_HOST}:{DB_PORT}/{DB_NAME}")
+engine = create_engine(db_url_target)
 
-# GEMINI LIVE TOKEN GENERATION
-client = genai.Client()
-prompt = """
-Generate synthetic unclean data tokens for logistics:
-1. 15 misspelled or messy carrier names (e.g., 'FedEX Corp!!', 'DHL_ERR')
-2. 5 corrupt shipment status values (e.g., 'DELIV@RED', 'NULL_VAL')
-3. 5 malformed date strings (e.g., '2026/02/31', '04-06-202X')
-Return valid JSON matching this schema:
-{"carriers": ["string"], "statuses": ["string"], "dates": ["string"]}
-"""
-
-response = client.models.generate_content(
-    model="gemini-2.5-flash",
-    contents=prompt,
-    config={"response_mime_type": "application/json"}
-)
-
-seeds = json.loads(response.text)
+# GEMINI LIVE TOKEN GENERATION (MOCKED LOCAL TO AVOID NETWORK CALLS)
+seeds = {
+    "carriers": [
+        "FedEX Corp!!", "DHL_ERR", "UPS_Deliv_Fail", "U.S. Postal Service?", 
+        "AmazonLogistics##", "Maersk Line Inc...", "C.H. Robinson!!!", 
+        "XPO Logistics__", "J.B. Hunt Tran*", "Fedex Express - ERR",
+        "DHL Express??", "USPS_MESS", "Kintetsu World Express$$",
+        "Nippon Express!!", "DB Schenker - BAD"
+    ],
+    "statuses": ["DELIV@RED", "NULL_VAL", "PNDG_ERR", "UNKNOWN_STATUS", "IN_TRANSIT_ERROR"],
+    "dates": ["2026/02/31", "04-06-202X", "2026-13-01", "0000-00-00", "2026-02-30"]
+}
 bad_carriers = seeds["carriers"]
 bad_statuses = seeds["statuses"]
 bad_dates = seeds["dates"]
@@ -118,12 +119,12 @@ df_shipments = pd.DataFrame(fact_data, columns=[
 
 # PREVENT DUPLICATES FOR DIMENSION TABLES
 try:
-    existing_carriers = pd.read_sql("SELECT carrier_id FROM dim_carriers", engine)["carrier_id"].tolist()
+    existing_carriers = pd.read_sql("SELECT carrier_id FROM raw.dim_carriers", engine)["carrier_id"].tolist()
 except Exception:
     existing_carriers = []
 
 try:
-    existing_warehouses = pd.read_sql("SELECT warehouse_id FROM dim_warehouses", engine)["warehouse_id"].tolist()
+    existing_warehouses = pd.read_sql("SELECT warehouse_id FROM raw.dim_warehouses", engine)["warehouse_id"].tolist()
 except Exception:
     existing_warehouses = []
 
@@ -131,8 +132,8 @@ df_carriers_new = df_carriers[~df_carriers["carrier_id"].isin(existing_carriers)
 df_warehouses_new = df_warehouses[~df_warehouses["warehouse_id"].isin(existing_warehouses)]
 
 # WRITE TO DATABASE
-df_carriers_new.to_sql("dim_carriers", engine, if_exists="append", index=False)
-df_warehouses_new.to_sql("dim_warehouses", engine, if_exists="append", index=False)
-df_shipments.to_sql("fact_shipments", engine, if_exists="append", index=False)
+df_carriers_new.to_sql("dim_carriers", engine, schema="raw", if_exists="append", index=False)
+df_warehouses_new.to_sql("dim_warehouses", engine, schema="raw", if_exists="append", index=False)
+df_shipments.to_sql("fact_shipments", engine, schema="raw", if_exists="append", index=False)
 
 engine.dispose()
