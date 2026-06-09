@@ -1,3 +1,90 @@
+-- Create Schemas if they do not exist
+CREATE SCHEMA IF NOT EXISTS raw;
+CREATE SCHEMA IF NOT EXISTS bronze;
+CREATE SCHEMA IF NOT EXISTS silver;
+
+-- Create Raw Schema Tables
+CREATE TABLE IF NOT EXISTS raw.dim_carriers (
+    carrier_id TEXT,
+    carrier_name TEXT
+);
+
+CREATE TABLE IF NOT EXISTS raw.dim_warehouses (
+    warehouse_id TEXT,
+    region TEXT
+);
+
+CREATE TABLE IF NOT EXISTS raw.fact_shipments (
+    shipment_id TEXT,
+    order_id TEXT,
+    carrier_id TEXT,
+    warehouse_id TEXT,
+    ship_date TEXT,
+    delivery_date TEXT,
+    status TEXT,
+    weight DOUBLE PRECISION
+);
+
+-- Create Bronze Schema Tables
+CREATE TABLE IF NOT EXISTS bronze.dim_carriers (
+    carrier_id VARCHAR PRIMARY KEY,
+    carrier_name VARCHAR
+);
+
+CREATE TABLE IF NOT EXISTS bronze.dim_warehouses (
+    warehouse_id VARCHAR PRIMARY KEY,
+    region VARCHAR
+);
+
+CREATE TABLE IF NOT EXISTS bronze.fact_shipments (
+    shipment_id VARCHAR PRIMARY KEY,
+    order_id VARCHAR,
+    carrier_id VARCHAR,
+    warehouse_id VARCHAR,
+    ship_date VARCHAR,
+    delivery_date VARCHAR,
+    status VARCHAR,
+    weight NUMERIC,
+    copied_at TIMESTAMP DEFAULT NOW()
+);
+
+-- Create Silver Schema Tables
+CREATE TABLE IF NOT EXISTS silver.dim_carriers (
+    carrier_id VARCHAR PRIMARY KEY,
+    carrier_name VARCHAR,
+    copied_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS silver.dim_warehouses (
+    warehouse_id VARCHAR PRIMARY KEY,
+    region VARCHAR,
+    copied_at TIMESTAMP DEFAULT NOW()
+);
+
+-- Create custom date cast function in Silver schema if not exists
+CREATE OR REPLACE FUNCTION silver.safe_cast_date(val text)
+ RETURNS date
+ LANGUAGE plpgsql
+AS $function$
+BEGIN
+    RETURN val::date;
+EXCEPTION WHEN others THEN
+    RETURN NULL;
+END;
+$function$;
+
+CREATE TABLE IF NOT EXISTS silver.fact_shipments (
+    shipment_id VARCHAR PRIMARY KEY,
+    order_id VARCHAR,
+    carrier_id VARCHAR,
+    warehouse_id VARCHAR,
+    ship_date DATE,
+    delivery_date DATE,
+    status VARCHAR,
+    weight NUMERIC,
+    copied_at TIMESTAMP DEFAULT NOW()
+);
+
 --append to bronze tables from raw tables
 INSERT INTO bronze.dim_carriers (carrier_id, carrier_name) 
 SELECT carrier_id, carrier_name FROM raw.dim_carriers
