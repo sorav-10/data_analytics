@@ -65,15 +65,30 @@ bad_statuses = seeds["statuses"]
 bad_dates = seeds["dates"]
 
 # CONFIGURATION
-total_records = random.randint(5, 20)
+total_records = random.randint(10, 100)
 today_date = datetime.now()
 
 # 1. DIM_CARRIERS DATA
 carrier_ids = [f"CR-{i:03d}" for i in range(1, 51)]
-clean_carriers = [f"Carrier-Group-{i}" for i in range(1, 51)]
+clean_carrier_bases = [
+    "FedEx", "DHL", "UPS", "USPS", "Amazon Logistics", 
+    "Maersk", "C.H. Robinson", "XPO Logistics", "J.B. Hunt", 
+    "Kintetsu World Express", "Nippon Express", "DB Schenker", 
+    "Schneider National", "Knight-Swift", "Landstar", "Werner Enterprises", 
+    "Old Dominion", "Estes Express", "YRC Freight", "DPD", 
+    "Royal Mail", "Canada Post", "Australia Post", "Japan Post", "La Poste"
+]
+clean_carriers = []
+suffixes = ["Express", "Logistics", "Freight", "Global", "Ground", "Air", "Solutions", "Services"]
+for i in range(50):
+    base = clean_carrier_bases[i % len(clean_carrier_bases)]
+    suffix = suffixes[i // len(clean_carrier_bases)]
+    clean_carriers.append(f"{base} {suffix}")
+
 df_carriers = pd.DataFrame({"carrier_id": carrier_ids, "carrier_name": clean_carriers})
 
-for idx in random.sample(range(len(df_carriers)), 10):
+# Set exactly 10% (5 out of 50) of the carriers as error names
+for idx in random.sample(range(len(df_carriers)), 5):
     df_carriers.iloc[idx, 1] = random.choice(bad_carriers)
 
 # 2. DIM_WAREHOUSES DATA

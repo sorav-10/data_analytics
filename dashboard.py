@@ -1,6 +1,7 @@
 import streamlit as st
 import duckdb
 import pandas as pd
+import datetime
 
 # Set page layout and config
 st.set_page_config(
@@ -27,6 +28,16 @@ def query_db(query):
     finally:
         con.close()
 
+
+date_bounds = query_db("SELECT MIN(ship_date) as min_s, MAX(ship_date) as max_s FROM golden.obt_shipments")
+if not date_bounds.empty and pd.notna(date_bounds.iloc[0]['min_s']):
+    min_date = pd.to_datetime(date_bounds.iloc[0]['min_s']).date()
+    max_date = pd.to_datetime(date_bounds.iloc[0]['max_s']).date()
+else:
+    min_date = datetime.date.today() - datetime.timedelta(days=7)
+    max_date = datetime.date.today()
+
+
 # Title
 st.title("Logistics Performance Dashboard")
 
@@ -39,6 +50,13 @@ statuses_list = ["All"] + list(query_db("SELECT DISTINCT status FROM golden.obt_
 
 selected_region = st.sidebar.selectbox("Warehouse Region", regions_list)
 selected_status = st.sidebar.selectbox("Shipment Status", statuses_list)
+selected_date_range = st.sidebar.date_input(
+    "Shipment Date Range",
+    value=(min_date, max_date),
+    min_value=min_date,
+    max_value=max_date
+)
+
 
 # Build dynamic query based on filters
 where_clauses = []
@@ -46,8 +64,12 @@ if selected_region != "All":
     where_clauses.append(f"region = '{selected_region}'")
 if selected_status != "All":
     where_clauses.append(f"status = '{selected_status}'")
+if isinstance(selected_date_range, tuple) and len(selected_date_range) == 2:
+    start_date, end_date = selected_date_range
+    where_clauses.append(f"ship_date BETWEEN '{start_date}' AND '{end_date}'")
 
 where_str = f"WHERE {' AND '.join(where_clauses)}" if where_clauses else ""
+
 
 # Load Filtered Data
 metrics_df = query_db(f"""
@@ -117,7 +139,7 @@ with col_right:
         ORDER BY total_shipments DESC;
     """)
     if not region_df.empty:
-        st.dataframe(region_df, use_container_width=True, hide_index=True)
+        st.dataframe(region_df, width='stretch', hide_index=True)
     else:
         st.info("No regional data available.")
 
@@ -147,6 +169,6 @@ shipments_df = query_db(f"""
 """)
 
 if not shipments_df.empty:
-    st.dataframe(shipments_df, use_container_width=True, hide_index=True)
+    st.dataframe(shipments_df, width='stretch', hide_index=True)
 else:
     st.info("No shipments match the current search or filter options.")

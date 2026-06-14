@@ -22,4 +22,8 @@ project_description.md
 # DuckDB database
 *.db
 
+# Logs
+pipeline.log
 
+# understand-anything temporary files
+.understand-anything/

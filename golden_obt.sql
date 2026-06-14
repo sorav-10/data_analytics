@@ -9,7 +9,6 @@ CREATE SCHEMA IF NOT EXISTS golden;
 CREATE TABLE IF NOT EXISTS golden.obt_shipments (
     shipment_id VARCHAR PRIMARY KEY,
     order_id VARCHAR,
-    carrier_id VARCHAR,
     warehouse_id VARCHAR,
     ship_date DATE,
     delivery_date DATE,
@@ -24,7 +23,6 @@ INSERT OR REPLACE INTO
     golden.obt_shipments (
         shipment_id,
         order_id,
-        carrier_id,
         warehouse_id,
         ship_date,
         delivery_date,
@@ -39,18 +37,16 @@ WITH
         SELECT
             f.shipment_id AS shipment_id,
             f.order_id AS order_id,
-            f.carrier_id AS carrier_id,
             f.warehouse_id AS warehouse_id,
             f.ship_date AS ship_date,
             f.delivery_date AS delivery_date,
             f.status AS status,
             f.weight AS weight,
-            c.carrier_name AS carrier_name,
+            f.carrier_name AS carrier_name,
             w.region AS region,
             f.copied_at AS copied_at
         FROM
             pg.silver.fact_shipments f
-            LEFT JOIN pg.silver.dim_carriers c ON f.carrier_id = c.carrier_id
             LEFT JOIN pg.silver.dim_warehouses w ON f.warehouse_id = w.warehouse_id
         WHERE
             f.copied_at > (

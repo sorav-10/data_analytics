@@ -43,8 +43,7 @@ CREATE TABLE IF NOT EXISTS bronze.fact_shipments (
 
 -- Create Silver Schema Tables
 CREATE TABLE IF NOT EXISTS silver.dim_carriers (
-  carrier_id VARCHAR PRIMARY KEY,
-  carrier_name VARCHAR,
+  carrier_name VARCHAR PRIMARY KEY,
   copied_at TIMESTAMP
 );
 
@@ -55,18 +54,10 @@ CREATE TABLE IF NOT EXISTS silver.dim_warehouses (
 );
 
 -- Create custom date cast function in Silver schema if not exists
-CREATE OR REPLACE FUNCTION silver.safe_cast_date (val text) RETURNS date LANGUAGE plpgsql AS $function$
-BEGIN
-    RETURN val::date;
-EXCEPTION WHEN others THEN
-    RETURN NULL;
-END;
-$function$;
-
 CREATE TABLE IF NOT EXISTS silver.fact_shipments (
   shipment_id VARCHAR PRIMARY KEY,
   order_id VARCHAR,
-  carrier_id VARCHAR,
+  carrier_name VARCHAR REFERENCES silver.dim_carriers (carrier_name),
   warehouse_id VARCHAR,
   ship_date DATE,
   delivery_date DATE,
@@ -74,6 +65,47 @@ CREATE TABLE IF NOT EXISTS silver.fact_shipments (
   weight NUMERIC,
   copied_at TIMESTAMP
 );
+
+CREATE OR REPLACE FUNCTION silver.safe_cast_date (val text) RETURNS DATE LANGUAGE IMMUTABLE plpgsql AS $$
+BEGIN
+    RETURN val::date;
+EXCEPTION WHEN others THEN
+    RETURN NULL;
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION silver.normalise_carrier (name TEXT) RETURNS TEXT LANGUAGE IMMUTABLE plpgsql AS $$
+BEGIN
+  RETURN CASE
+    WHEN name ILIKE '%dhl%'THEN 'DHL'
+    WHEN name ILIKE '%fed%' THEN 'FedEx'
+    WHEN name ILIKE '%ups%' THEN 'UPS'
+    WHEN name ILIKE '%usps%' THEN 'USPS'
+    WHEN name ILIKE '%amazon%' THEN 'Amazon'
+    WHEN name ILIKE '%maersk%' THEN 'Maersk'
+    WHEN name ILIKE '%robinson%' THEN 'C.H. Robinson'
+    WHEN name ILIKE '%xpo%' THEN 'XPO Logistics'
+    WHEN name ILIKE '%hunt%' THEN 'J.B. Hunt'
+    WHEN name ILIKE '%kintetsu%' THEN 'Kintetsu World Express'
+    WHEN name ILIKE '%nippon%' THEN 'Nippon Express'
+    WHEN name ILIKE '%schenker%' THEN 'DB Schenker'
+    WHEN name ILIKE '%schneider%' THEN 'Schneider National'
+    WHEN name ILIKE '%swift%' THEN 'Knight-Swift'
+    WHEN name ILIKE '%landstar%' THEN 'Landstar'
+    WHEN name ILIKE '%werner%' THEN 'Werner Enterprises'
+    WHEN name ILIKE '%old%' THEN 'Old Dominion'
+    WHEN name ILIKE '%estes%' THEN 'Estes Express'
+    WHEN name ILIKE '%yrc%' THEN 'YRC Freight'
+    WHEN name ILIKE '%dpd%' THEN 'DPD'
+    WHEN name ILIKE '%royal%' THEN 'Royal Mail'
+    WHEN name ILIKE '%canada%' THEN 'Canada Post'
+    WHEN name ILIKE '%australia%' THEN 'Australia Post'
+    WHEN name ILIKE '%japan%' THEN 'Japan Post'
+    WHEN name ILIKE '%poste%' THEN 'La Poste'
+    ELSE name
+  END;
+END;
+$$;
 
 --append to bronze tables from raw tables
 INSERT INTO
@@ -139,28 +171,13 @@ SET
 
 --cleaning bronze data and copying to silver layer 
 INSERT INTO
-  silver.dim_carriers (carrier_id, carrier_name, copied_at)
+  silver.dim_carriers (carrier_name, copied_at)
 SELECT DISTINCT
-  carrier_id,
-  CONCAT(
-    'Carrier-Group-',
-    CAST(
-      SUBSTRING(
-        carrier_id
-        FROM
-          4
-      ) AS INTEGER
-    )
-  ) AS carrier_name,
+  silver.normalise_carrier (carrier_name) AS carrier_name,
   NOW() AS copied_at
 FROM
   bronze.dim_carriers
-ON CONFLICT (carrier_id) DO
-UPDATE
-SET
-  carrier_name = EXCLUDED.carrier_name
-WHERE
-  silver.dim_carriers.carrier_name IS NULL;
+ON CONFLICT (carrier_name) DO NOTHING;
 
 INSERT INTO
   silver.dim_warehouses (warehouse_id, region, copied_at)
@@ -181,7 +198,7 @@ INSERT INTO
   silver.fact_shipments (
     shipment_id,
     order_id,
-    carrier_id,
+    carrier_name,
     warehouse_id,
     ship_date,
     delivery_date,
@@ -190,24 +207,25 @@ INSERT INTO
     copied_at
   )
 WITH
-  parsed_date AS (
+  parsed AS (
     SELECT
-      shipment_id,
-      order_id,
-      carrier_id,
-      warehouse_id,
-      silver.safe_cast_date (ship_date) AS ship_date,
-      silver.safe_cast_date (delivery_date) AS delivery_date,
-      status,
-      weight
+      f.shipment_id,
+      f.order_id,
+      silver.normalise_carrier (bc.carrier_name) AS carrier_name,
+      f.warehouse_id,
+      silver.safe_cast_date (f.ship_date) AS ship_date,
+      silver.safe_cast_date (f.delivery_date) AS delivery_date,
+      f.status,
+      f.weight
     FROM
-      bronze.fact_shipments
+      bronze.fact_shipments f
+      LEFT JOIN bronze.dim_carriers bc ON f.carrier_id = bc.carrier_id
   ),
   cleaned_data AS (
     SELECT
       shipment_id,
       order_id,
-      carrier_id,
+      carrier_name,
       warehouse_id,
       ship_date,
       CASE
@@ -217,9 +235,9 @@ WITH
         ELSE delivery_date
       END AS delivery_date,
       CASE
-        WHEN status LIKE 'D%'
+        WHEN status ILIKE 'D%'
         OR status ILIKE 'del' THEN 'Delivered'
-        WHEN status LIKE 'P%'
+        WHEN status ILIKE 'p%'
         OR status ILIKE 'In%' THEN 'Pending'
         WHEN status ILIKE 'fail' THEN 'Failed'
         ELSE 'NA'
@@ -228,9 +246,9 @@ WITH
         WHEN weight <= 0 THEN NULL
         ELSE weight
       END AS weight,
-      NOW()
+      NOW() AS copied_at
     FROM
-      parsed_date
+      parsed
   )
 SELECT
   *
@@ -240,10 +258,10 @@ ON CONFLICT (shipment_id) DO
 UPDATE
 SET
   order_id = EXCLUDED.order_id,
-  carrier_id = EXCLUDED.carrier_id,
+  carrier_name = EXCLUDED.carrier_name,
   warehouse_id = EXCLUDED.warehouse_id,
   ship_date = EXCLUDED.ship_date,
   delivery_date = EXCLUDED.delivery_date,
   status = EXCLUDED.status,
   weight = EXCLUDED.weight,
-  copied_at = NOW();
+  copied_at = EXCLUDED.copied_at;
