@@ -35,13 +35,17 @@ def main():
         sys.exit(1)
 
     # Parse arguments to decide mode
-    mode = "cli"
+    mode = "test"
     if len(sys.argv) > 1:
         arg = sys.argv[1].lower()
         if arg in ("--init", "--check", "-i"):
             mode = "init"
         elif arg in ("--test", "-t"):
             mode = "test"
+        else:
+            print("Usage: python3 duckdb_cli.py [--init | --test]")
+            con.close()
+            return
 
     if mode == "init":
         print(f"DuckDB: Connected and attached PostgreSQL database '{DB_NAME}' as 'pg'.")
@@ -77,33 +81,6 @@ def main():
             print(f"Error querying table: {e}")
         con.close()
         return
-
-    # Default: Interactive CLI
-    print(f"DuckDB CLI: Connected to PostgreSQL '{DB_NAME}' (attached as 'pg').")
-    print("Type 'exit' or 'quit' to close.")
-
-    while True:
-        try:
-            query = input("duckdb> ").strip()
-            if not query:
-                continue
-            if query.lower() in ["exit", "quit", "exit;", "quit;"]:
-                break
-            
-            # Run query and display results
-            res = con.execute(query)
-            if res.description is not None:
-                df = res.df()
-                print(df.to_string(index=False))
-            else:
-                print("Query executed successfully.")
-        except KeyboardInterrupt:
-            print("\nUse 'exit' or 'quit' to close.")
-        except Exception as e:
-            print(f"Error: {e}")
-
-    con.close()
-    print("DuckDB CLI session closed.")
 
 if __name__ == "__main__":
     main()

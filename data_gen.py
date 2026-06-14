@@ -65,7 +65,7 @@ bad_statuses = seeds["statuses"]
 bad_dates = seeds["dates"]
 
 # CONFIGURATION
-total_records = 20000
+total_records = random.randint(5, 20)
 today_date = datetime.now()
 
 # 1. DIM_CARRIERS DATA

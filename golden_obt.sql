@@ -1,6 +1,24 @@
+INSTALL postgres;
+
 LOAD postgres;
 
 ATTACH 'dbname=logistics_db user=postgres password=saurav7kush host=/tmp port=5432' AS pg (TYPE postgres);
+
+CREATE SCHEMA IF NOT EXISTS golden;
+
+CREATE TABLE IF NOT EXISTS golden.obt_shipments (
+    shipment_id VARCHAR PRIMARY KEY,
+    order_id VARCHAR,
+    carrier_id VARCHAR,
+    warehouse_id VARCHAR,
+    ship_date DATE,
+    delivery_date DATE,
+    status VARCHAR,
+    weight DOUBLE,
+    carrier_name VARCHAR,
+    region VARCHAR,
+    copied_at TIMESTAMPTZ
+);
 
 INSERT OR REPLACE INTO
     golden.obt_shipments (
@@ -20,16 +38,16 @@ WITH
     obt_cte AS (
         SELECT
             f.shipment_id AS shipment_id,
-        f.order_id AS order_id,
-        f.carrier_id AS carrier_id,
-        f.warehouse_id AS warehouse_id,
-        f.ship_date AS ship_date,
-        f.delivery_date AS delivery_date,
-        f.status AS status,
-        f.weight AS weight,
-        c.carrier_name AS carrier_name,
-        w.region AS region,
-        f.copied_at AS copied_at
+            f.order_id AS order_id,
+            f.carrier_id AS carrier_id,
+            f.warehouse_id AS warehouse_id,
+            f.ship_date AS ship_date,
+            f.delivery_date AS delivery_date,
+            f.status AS status,
+            f.weight AS weight,
+            c.carrier_name AS carrier_name,
+            w.region AS region,
+            f.copied_at AS copied_at
         FROM
             pg.silver.fact_shipments f
             LEFT JOIN pg.silver.dim_carriers c ON f.carrier_id = c.carrier_id
