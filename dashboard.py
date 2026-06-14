@@ -29,15 +29,6 @@ def query_db(query):
         con.close()
 
 
-date_bounds = query_db("SELECT MIN(ship_date) as min_s, MAX(ship_date) as max_s FROM golden.obt_shipments")
-if not date_bounds.empty and pd.notna(date_bounds.iloc[0]['min_s']):
-    min_date = pd.to_datetime(date_bounds.iloc[0]['min_s']).date()
-    max_date = pd.to_datetime(date_bounds.iloc[0]['max_s']).date()
-else:
-    min_date = datetime.date.today() - datetime.timedelta(days=7)
-    max_date = datetime.date.today()
-
-
 # Title
 st.title("Logistics Performance Dashboard")
 
@@ -47,6 +38,14 @@ st.sidebar.header("Filter Options")
 # Fetch unique regions and statuses for dropdowns
 regions_list = ["All"] + list(query_db("SELECT DISTINCT region FROM golden.obt_shipments ORDER BY region;")["region"])
 statuses_list = ["All"] + list(query_db("SELECT DISTINCT status FROM golden.obt_shipments ORDER BY status;")["status"])
+date_bounds = query_db("SELECT MIN(ship_date) as min_s, MAX(ship_date) as max_s FROM golden.obt_shipments")
+if not date_bounds.empty and pd.notna(date_bounds.iloc[0]['min_s']):
+    min_date = pd.to_datetime(date_bounds.iloc[0]['min_s']).date()
+    max_date = pd.to_datetime(date_bounds.iloc[0]['max_s']).date()
+else:
+    min_date = datetime.date.today() - datetime.timedelta(days=7)
+    max_date = datetime.date.today()
+
 
 selected_region = st.sidebar.selectbox("Warehouse Region", regions_list)
 selected_status = st.sidebar.selectbox("Shipment Status", statuses_list)
@@ -77,6 +76,7 @@ metrics_df = query_db(f"""
         COUNT(*)::INT AS total_shipments,
         ROUND(AVG(delivery_date - ship_date), 1) AS avg_days_in_transit,
         ROUND(SUM(weight), 1) AS total_weight_kg,
+        COUNT(CASE WHEN status = 'Pending' THEN 1 END) AS pending_shipments,
         COUNT(CASE WHEN status = 'Delivered' THEN 1 END) AS delivered_shipments,
         COUNT(CASE WHEN status IN ('Failed', 'NA') THEN 1 END) AS failed_shipments,
         ROUND(COUNT(CASE WHEN status = 'Delivered' THEN 1 END) * 100.0 / NULLIF(COUNT(CASE WHEN status IN ('Delivered', 'Failed', 'NA') THEN 1 END), 0), 1) AS success_rate
@@ -88,18 +88,20 @@ metrics_df = query_db(f"""
 if not metrics_df.empty:
     kpis = metrics_df.iloc[0]
     
-    col1, col2, col3, col4, col5, col6 = st.columns(6)
+    col1, col2, col3, col4, col5, col6, col7 = st.columns(7)
     with col1:
         st.metric(label="Total Shipments", value=f"{kpis['total_shipments']:,}")
     with col2:
-        st.metric(label="Delivered Shipments", value=f"{kpis['delivered_shipments']}")
+        st.metric(label="Pending Shipments", value=f"{kpis['pending_shipments']:,}")
     with col3:
-        st.metric(label="Failed/NA Shipments", value=f"{kpis['failed_shipments']}")
+        st.metric(label="Delivered Shipments", value=f"{kpis['delivered_shipments']}")
     with col4:
-        st.metric(label="Delivery Success Rate", value=f"{kpis['success_rate']}%")
+        st.metric(label="Failed/NA Shipments", value=f"{kpis['failed_shipments']}")
     with col5:
-        st.metric(label="Avg Days in Transit", value=f"{kpis['avg_days_in_transit']} Days")
+        st.metric(label="Delivery Success Rate", value=f"{kpis['success_rate']}%")
     with col6:
+        st.metric(label="Avg Days in Transit", value=f"{kpis['avg_days_in_transit']} Days")
+    with col7:
         st.metric(label="Total Weight Shipped", value=f"{kpis['total_weight_kg']:,} Kgs")
 
 st.markdown("---")
@@ -117,7 +119,6 @@ with col_left:
         {where_str}
         {(' AND ' if where_str else 'WHERE ')} delivery_date IS NOT NULL AND ship_date IS NOT NULL
         GROUP BY carrier_name
-        HAVING avg_days > 2.0
         ORDER BY avg_days ASC;
     """)
     if not carrier_df.empty:
