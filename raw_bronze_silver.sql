@@ -66,7 +66,7 @@ CREATE TABLE IF NOT EXISTS silver.fact_shipments (
   copied_at TIMESTAMP
 );
 
-CREATE OR REPLACE FUNCTION silver.safe_cast_date (val text) RETURNS DATE LANGUAGE IMMUTABLE plpgsql AS $$
+CREATE OR REPLACE FUNCTION silver.safe_cast_date (val text) RETURNS DATE LANGUAGE plpgsql IMMUTABLE AS $$
 BEGIN
     RETURN val::date;
 EXCEPTION WHEN others THEN
@@ -74,7 +74,7 @@ EXCEPTION WHEN others THEN
 END;
 $$;
 
-CREATE OR REPLACE FUNCTION silver.normalise_carrier (name TEXT) RETURNS TEXT LANGUAGE IMMUTABLE plpgsql AS $$
+CREATE OR REPLACE FUNCTION silver.normalise_carrier (name TEXT) RETURNS TEXT LANGUAGE plpgsql IMMUTABLE AS $$
 BEGIN
   RETURN CASE
     WHEN name ILIKE '%dhl%'THEN 'DHL'
